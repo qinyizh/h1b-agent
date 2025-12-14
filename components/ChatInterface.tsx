@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Send, Scale, ExternalLink, Sparkles } from "lucide-react";
+import { User, Send, Scale, ExternalLink } from "lucide-react"; // 1. 引入 ExternalLink 图标
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
 
@@ -31,7 +31,7 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -56,6 +56,7 @@ export function ChatInterface() {
     setIsLoading(true);
 
     try {
+      // Send conversation history (excluding the current user message which is already in updatedMessages)
       const history = updatedMessages.slice(0, -1).map((msg) => ({
         role: msg.role,
         text: msg.text,
@@ -63,8 +64,13 @@ export function ChatInterface() {
 
       const response = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmedInput, history: history }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          message: trimmedInput,
+          history: history,
+        }),
       });
 
       if (!response.ok) {
@@ -78,6 +84,7 @@ export function ChatInterface() {
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "发生错误，请稍后重试";
       setError(errorMessage);
+      console.error("Chat error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -99,77 +106,79 @@ export function ChatInterface() {
   const showSuggestedQuestions = !hasUserMessages && messages.length === 1;
 
   return (
-    // 增加底部高度，避免被底部导航栏遮挡 (如果你有 TabBar)
-    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-6rem)]">
-      
+    <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-5rem)]">
       {/* Message List */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-8 scroll-smooth">
+      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
         <AnimatePresence mode="popLayout">
           {messages.map((message, index) => (
             <motion.div
               key={index}
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3, ease: "easeOut" }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.2 }}
               className={cn(
-                "flex gap-4 max-w-3xl",
+                "flex gap-3 max-w-3xl",
                 message.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"
               )}
             >
               {/* Avatar */}
               <div
                 className={cn(
-                  "flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center shadow-sm",
+                  "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
                   message.role === "user"
-                    ? "bg-gradient-to-br from-primary to-primary/80 text-white"
-                    : "bg-white border border-stone-100 text-emerald-600"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-white border border-stone-200 text-stone-700"
                 )}
               >
                 {message.role === "user" ? (
-                  <User className="w-5 h-5" />
+                  <User className="w-4 h-4" />
                 ) : (
-                  <Sparkles className="w-5 h-5 fill-emerald-100" />
+                  <Scale className="w-4 h-4" />
                 )}
               </div>
 
               {/* Message Bubble */}
               <div
                 className={cn(
-                  "rounded-2xl px-5 py-3.5 max-w-[85%] md:max-w-[80%] shadow-sm",
+                  "rounded-2xl px-5 py-4 max-w-[90%] md:max-w-[80%] shadow-sm", // 增加 padding 和投影，质感更好
                   message.role === "user"
                     ? "bg-primary text-primary-foreground"
-                    : "bg-white border border-stone-100 text-stone-800"
+                    : "bg-white border border-stone-100 text-stone-800" // 边框颜色淡一点，更干净
                 )}
               >
                 <div className={cn(
-                  "text-[15px] leading-7 break-words",
-                  message.role === "model" && "font-sans tracking-wide"
+                  "text-sm md:text-base leading-7 break-words", // leading-7 增加行高，阅读更舒适
+                  message.role === "model" && "font-sans" // ✨ 关键修改：改回 font-sans (无衬线体)
                 )}>
                   {message.role === "model" ? (
                     <ReactMarkdown
                       components={{
-                        // 优化段落间距
-                        p: ({ children }) => <p className="mb-3 last:mb-0 text-stone-700">{children}</p>,
+                        // 1. 段落：增加下边距，颜色稍微深一点
+                        p: ({ children }) => <p className="mb-4 last:mb-0 text-stone-700">{children}</p>,
                         
-                        // 优化列表样式
-                        ul: ({ children }) => <ul className="list-disc pl-5 mb-3 space-y-1.5 marker:text-emerald-300/80">{children}</ul>,
-                        ol: ({ children }) => <ol className="list-decimal pl-5 mb-3 space-y-1.5 marker:text-emerald-300/80">{children}</ol>,
-                        li: ({ children }) => <li className="pl-0.5">{children}</li>,
+                        // 2. 列表：调整缩进和间距，Marker 颜色淡化
+                        ul: ({ children }) => <ul className="list-disc pl-5 mb-4 space-y-2 marker:text-stone-400">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal pl-5 mb-4 space-y-2 marker:text-stone-400">{children}</ol>,
                         
-                        // 标题加粗
-                        strong: ({ children }) => <strong className="font-semibold text-stone-900">{children}</strong>,
+                        // 3. 列表项：确保对齐
+                        li: ({ children }) => <li className="pl-1">{children}</li>,
                         
-                        // 标题
-                        h3: ({ children }) => <h3 className="font-bold text-base mt-5 mb-2 text-stone-900">{children}</h3>,
-
-                        // 引用块 (Disclaimer)
+                        // 4. 标题/加粗：加深颜色，更醒目
+                        strong: ({ children }) => <strong className="font-bold text-stone-900">{children}</strong>,
+                        
+                        // 5. 标题 (如果 AI 输出了 # 标题)
+                        h3: ({ children }) => <h3 className="font-bold text-lg mt-6 mb-2 text-stone-900">{children}</h3>,
+                        
+                        // 6. 引用块 (用于 Disclaimer)
                         blockquote: ({ children }) => (
-                          <blockquote className="border-l-[3px] border-stone-200 pl-3 py-1 my-3 text-stone-500 text-sm italic bg-stone-50/50 rounded-r">
+                          <blockquote className="border-l-4 border-stone-300 pl-4 py-1 my-4 text-stone-500 italic bg-stone-50 rounded-r">
                             {children}
                           </blockquote>
                         ),
 
-                        // ✨ 终极优化版胶囊链接 ✨
+                        // 7. ✨ 精修版胶囊按钮 ✨
+                        // 稍微调小一点，颜色更清透，垂直对齐更好
                         a: ({ href, children }) => {
                           const isSourceLink = String(children).includes("Source") || href?.includes("uscis.gov");
                           
@@ -179,9 +188,9 @@ export function ChatInterface() {
                                 href={href} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center gap-0.5 mx-1 -mb-[1px] px-2 py-0.5 bg-emerald-50 text-emerald-700/90 text-[10px] font-medium border border-emerald-100/80 rounded-full no-underline hover:bg-emerald-100 hover:text-emerald-800 hover:border-emerald-300 transition-all align-middle select-none shadow-[0_1px_2px_rgba(0,0,0,0.02)]"
+                                className="inline-flex items-center gap-1 mx-1 -mb-[2px] px-2.5 py-0.5 bg-emerald-50/80 text-emerald-700 text-[11px] font-medium border border-emerald-200/60 rounded-full no-underline hover:bg-emerald-100 hover:border-emerald-300 transition-all align-baseline select-none"
                               >
-                                <ExternalLink size={9} className="stroke-[2.5] opacity-60" />
+                                <ExternalLink size={10} className="stroke-[2.5] opacity-70" />
                                 <span className="tracking-tight">{children}</span>
                               </a>
                             );
@@ -210,33 +219,43 @@ export function ChatInterface() {
           ))}
         </AnimatePresence>
 
-        {/* Loading Bubble */}
+        {/* Loading Indicator */}
         {isLoading && (
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex gap-4 max-w-3xl mr-auto pl-1"
+            className="flex gap-3 max-w-3xl mr-auto"
           >
-            <div className="flex-shrink-0 w-9 h-9 rounded-full bg-white border border-stone-100 flex items-center justify-center text-emerald-600 shadow-sm">
-              <Sparkles className="w-5 h-5 fill-emerald-100 animate-pulse" />
+            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-white border border-stone-200 flex items-center justify-center text-stone-700">
+              <Scale className="w-4 h-4" />
             </div>
-            <div className="bg-white border border-stone-100 rounded-2xl px-5 py-4 shadow-sm">
-              <div className="flex gap-1.5">
-                <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce" />
-                <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce delay-75" />
-                <div className="w-1.5 h-1.5 bg-stone-300 rounded-full animate-bounce delay-150" />
+            <div className="bg-white border border-stone-200 rounded-2xl px-4 py-3">
+              <div className="flex gap-1">
+                <div className="w-2 h-2 bg-stone-400 rounded-full animate-bounce" />
+                <div
+                  className="w-2 h-2 bg-stone-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.1s" }}
+                />
+                <div
+                  className="w-2 h-2 bg-stone-400 rounded-full animate-bounce"
+                  style={{ animationDelay: "0.2s" }}
+                />
               </div>
             </div>
           </motion.div>
         )}
-        
-        {/* Error */}
+
+        {/* Error Message */}
         {error && (
-          <div className="max-w-3xl mx-auto px-4">
-             <div className="bg-red-50/80 border border-red-100 rounded-xl px-4 py-3 text-sm text-red-600 shadow-sm">
-               {error}
-             </div>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-3xl mx-auto"
+          >
+            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700 font-sans">
+              {error}
+            </div>
+          </motion.div>
         )}
 
         {/* Suggested Questions */}
@@ -244,15 +263,15 @@ export function ChatInterface() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-3xl mx-auto pt-2"
+            className="max-w-3xl mx-auto pt-4"
           >
-            <p className="text-xs text-stone-400 font-medium mb-3 pl-1">推荐问题</p>
+            <p className="text-sm text-muted font-sans mb-3">建议问题：</p>
             <div className="flex flex-wrap gap-2">
               {SUGGESTED_QUESTIONS.map((question, index) => (
                 <button
                   key={index}
                   onClick={() => handleSuggestedQuestion(question)}
-                  className="px-4 py-2 text-sm bg-white border border-stone-200 rounded-full text-stone-600 hover:bg-primary/5 hover:border-primary/30 hover:text-primary transition-all shadow-sm active:scale-95"
+                  className="px-4 py-2 text-sm bg-white border border-stone-200 rounded-full text-foreground hover:bg-stone-50 hover:border-primary/50 transition-colors font-sans"
                 >
                   {question}
                 </button>
@@ -261,41 +280,41 @@ export function ChatInterface() {
           </motion.div>
         )}
 
-        <div ref={messagesEndRef} className="h-4" />
+        <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="bg-gradient-to-t from-white via-white to-white/90 backdrop-blur-lg border-t border-stone-100">
-        <div className="container mx-auto max-w-4xl px-4 pt-3 pb-6"> {/* ✨ 这里增加了 pb-6 */}
-          <div className="relative flex items-end gap-3 bg-white border border-stone-200 rounded-2xl shadow-sm focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all">
-            <textarea
-              ref={inputRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder="问点什么..." // 简化文案
-              disabled={isLoading}
-              rows={1}
-              className="w-full pl-5 pr-14 py-3.5 bg-transparent focus:outline-none font-sans text-base text-stone-800 placeholder:text-stone-400 resize-none disabled:opacity-50"
-              style={{ maxHeight: "120px", minHeight: "52px" }}
-            />
-            {/* ✨ 发送按钮优化: 全圆角 + 动效 */}
-            <button
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className={cn(
-                "absolute right-2 bottom-2 p-2 rounded-full transition-all duration-200 flex items-center justify-center", // rounded-full
-                input.trim() && !isLoading
-                  ? "bg-primary text-primary-foreground shadow-md hover:bg-primary/90 hover:scale-105 active:scale-95"
-                  : "bg-stone-100 text-stone-300 cursor-not-allowed" // 禁用状态更柔和
-              )}
-            >
-              <Send className={cn("w-5 h-5", input.trim() ? "ml-0.5" : "")} /> {/* 微调 icon 位置 */}
-            </button>
+      {/* Input Area - Fixed at Bottom */}
+      <div className="border-t border-stone-200 bg-background/80 backdrop-blur-md">
+        <div className="container mx-auto max-w-4xl px-4 py-4">
+          <div className="flex items-end gap-3">
+            <div className="flex-1 relative">
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="输入您的问题..."
+                disabled={isLoading}
+                rows={1}
+                className="w-full px-4 py-3 pr-12 border-2 border-stone-200 rounded-lg bg-white focus:outline-none focus:border-primary font-sans text-base resize-none disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{ maxHeight: "120px" }}
+              />
+              <button
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading}
+                className={cn(
+                  "absolute right-2 bottom-2 p-2 rounded-lg transition-colors",
+                  input.trim() && !isLoading
+                    ? "bg-primary text-primary-foreground hover:bg-primary/90"
+                    : "bg-stone-200 text-stone-400 cursor-not-allowed"
+                )}
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
           </div>
-          
-          <p className="text-[10px] text-stone-400 text-center mt-3">
-            AI 生成内容仅供参考，不构成法律建议。
+          <p className="text-xs text-muted font-sans mt-2 px-1">
+            本工具由 AI 驱动，仅提供信息参考，不构成法律建议。具体个案请务必咨询持牌移民律师。
           </p>
         </div>
       </div>

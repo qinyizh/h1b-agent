@@ -4,55 +4,56 @@ import fs from "fs";
 import path from "path";
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY!);
-
+interface ChatMessage {
+    role: string;
+    text?: string;                 // 前端可能传这个
+    parts?: { text: string }[];    // 或者传这个
+}
 // ---------------------------------------------------------
 // 🚀 性能优化：全局单例缓存
 // 即使 Next.js 热重载，这个 global 变量也不会被轻易清空
 // ---------------------------------------------------------
-declare global {
-  var _knowledgeCache: string | null;
-}
-
+// 1. 全局缓存 (类型修复版)
+// ---------------------------------------------------------
+// 这里的技巧是：把 global 当作 any 类型，TypeScript 就不管你了
+// ---------------------------------------------------------
 function getKnowledgeBase() {
-    if (global._knowledgeCache) return global._knowledgeCache;
-  
-    const knowledgeDir = path.join(process.cwd(), 'data/knowledge');
-    
-    try {
-      const files = fs.readdirSync(knowledgeDir).filter(file => file.endsWith('.txt'));
-      
-      let allContent = "";
-      files.forEach(file => {
-        const filePath = path.join(knowledgeDir, file);
-        let content = fs.readFileSync(filePath, 'utf-8');
-        
-        // 1. 尝试从文件内容里提取 URL (针对爬虫抓取的网页)
-        // 匹配格式: "Source: https://..." 或 "Source URL: https://..."
-        const urlMatch = content.match(/Source(?: URL)?: (https?:\/\/[^\s]+)/i);
-        const sourceUrl = urlMatch ? urlMatch[1] : null;
-  
-        // 2. 决定引用的名称 (有 URL 用 URL，没 URL 用文件名)
-        const sourceName = sourceUrl ? sourceUrl : file.replace('.txt', '.pdf'); // 假装它是 PDF 原件
-  
-        // 3. 压缩内容
-        const compressedContent = content.replace(/\n\s*\n/g, '\n').trim();
-  
-        // 4. 【关键】构建带元数据的文档块
-        // 我们用 XML 风格的标签包裹，Gemini 对这种格式理解力最强
-        allContent += `
-  <document source="${sourceName}">
-  ${compressedContent}
-  </document>\n\n`;
-      });
-  
-      global._knowledgeCache = allContent;
-      return allContent;
-  
-    } catch (error) {
-      console.error("❌ 读取失败:", error);
-      return "";
-    }
+  const globalWithCache = global as unknown as { _knowledgeCache?: string };
+
+  if (globalWithCache._knowledgeCache) {
+    return globalWithCache._knowledgeCache;
   }
+
+  const knowledgeDir = path.join(process.cwd(), 'data/knowledge');
+  
+  try {
+    const files = fs.readdirSync(knowledgeDir).filter(file => file.endsWith('.txt'));
+    
+    let allContent = "";
+    files.forEach(file => {
+      const filePath = path.join(knowledgeDir, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      
+      const urlMatch = content.match(/Source(?: URL)?: (https?:\/\/[^\s]+)/i);
+      const sourceName = urlMatch ? urlMatch[1] : file.replace('.txt', '.pdf');
+
+      const compressedContent = content.replace(/\n\s*\n/g, '\n').trim();
+
+      allContent += `
+<document source="${sourceName}">
+${compressedContent}
+</document>\n\n`;
+    });
+
+    // 存入缓存
+    globalWithCache._knowledgeCache = allContent;
+    return allContent;
+
+  } catch (error) {
+    console.error("❌ 读取失败:", error);
+    return "";
+  }
+}
 
 export async function POST(req: Request) {
   try {
@@ -65,7 +66,7 @@ export async function POST(req: Request) {
         month: 'long',
         day: 'numeric'
     });
-    let formattedHistory = (history || []).map((msg: any) => {
+    const formattedHistory = (history || []).map((msg: ChatMessage) => {
     // 这里的逻辑是：不管前端传的是 text 还是 parts，我都把它修成 parts
     let textContent = "";
     
@@ -128,10 +129,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ reply: response });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("API Error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+    
     return NextResponse.json(
-      { error: "AI Error" }, 
+      { error: "AI Error", details: errorMessage }, 
       { status: 500 }
     );
   }
