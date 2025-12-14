@@ -1,11 +1,16 @@
-// scripts/convert-pdf.js
-const fs = require('fs');
-const path = require('path');
-const PDFParser = require("pdf2json");
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { PDFParse } from 'pdf-parse';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const KNOWLEDGE_DIR = path.join(__dirname, '../data/knowledge');
 
 async function convertAll() {
+  console.log("\n📄 [Uint8Array 修正版] 启动 PDF 转换...");
+  
   if (!fs.existsSync(KNOWLEDGE_DIR)) {
     console.error(`❌ 目录不存在: ${KNOWLEDGE_DIR}`);
     return;
@@ -15,54 +20,62 @@ async function convertAll() {
   const pdfFiles = files.filter(file => file.toLowerCase().endsWith('.pdf'));
 
   if (pdfFiles.length === 0) {
-    console.log("⚠️ 没找到 PDF 文件。");
+    console.log("⚠️  没有找到 PDF 文件。");
     return;
   }
 
-  console.log(`📂 找到 ${pdfFiles.length} 个 PDF，开始处理...`);
-
-  // 由于 pdf2json 是基于事件的，我们需要把它封装成 Promise 以便在循环中使用
-  const parsePDF = (filePath) => {
-    return new Promise((resolve, reject) => {
-      const pdfParser = new PDFParser(this, 1); // 1 = 仅文本模式
-
-      pdfParser.on("pdfParser_dataError", errData => reject(errData.parserError));
-      
-      pdfParser.on("pdfParser_dataReady", pdfData => {
-        // pdf2json 返回的是 URI 编码的文本，需要解码
-        const rawText = pdfParser.getRawTextContent(); 
-        resolve(rawText);
-      });
-
-      pdfParser.loadPDF(filePath);
-    });
-  };
+  console.log(`📂 找到 ${pdfFiles.length} 个 PDF 文件`);
+  console.log('-----------------------------------');
 
   for (const file of pdfFiles) {
     const inputPath = path.join(KNOWLEDGE_DIR, file);
     const outputFilename = file.replace(/\.pdf$/i, '.txt');
     const outputPath = path.join(KNOWLEDGE_DIR, outputFilename);
 
-    process.stdout.write(`⏳ 正在转换: ${file} ... `);
+    process.stdout.write(`⏳ 解析: ${file} `);
 
     try {
-      const textContent = await parsePDF(inputPath);
+      // 1. 读取为 Node.js Buffer
+      const nodeBuffer = fs.readFileSync(inputPath);
+
+      if (nodeBuffer.length === 0) {
+        console.log(`\n❌ 失败: 空文件`);
+        continue;
+      }
+
+      // 2. ⚡️ 关键修复：把 Buffer 强制转为 Uint8Array
+      // 这一步是为了满足 pdf-parse v2 的严格类型检查
+      const uint8Array = new Uint8Array(nodeBuffer);
+
+      // 3. 实例化 Parser (直接传入 Uint8Array)
+      const parser = new PDFParse(uint8Array);
+
+      // 4. 获取文本
+      const result = await parser.getText();
       
-      // 清洗数据：pdf2json 有时候会留很多横线和空行
-      const cleanText = textContent
-        .replace(/----------------/g, '')
-        .replace(/\n\s*\n/g, '\n'); // 去除多余空行
+      // 5. 销毁实例
+      if (parser.destroy) {
+        await parser.destroy();
+      }
+
+      // 6. 验证与清洗
+      if (!result || !result.text) {
+        console.log(`\n⚠️  无文字内容`);
+        continue;
+      }
+
+      const cleanText = result.text
+        .replace(/\n\n+/g, '\n')
+        .replace(/Page \d+ of \d+/g, '');
 
       fs.writeFileSync(outputPath, cleanText);
-      console.log(`✅ 成功!`);
-      
+      console.log(`-> ✅ 成功 (${cleanText.length} 字符)`);
+
     } catch (err) {
-      console.log(`❌ 失败!`);
-      console.error(`   原因: ${err}`);
+      console.log(`\n❌ 失败: ${err.message}`);
     }
   }
-  
-  console.log('🎉 全部搞定！');
+  console.log('-----------------------------------');
 }
 
 convertAll();

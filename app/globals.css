@@ -23,3 +23,16 @@
     text-wrap: balance;
   }
 }
+/* 全局样式或 Tailwind 类 */
+.prose a {
+  color: #059669; /* Emerald-600 */
+  text-decoration: none;
+  background: #ecfdf5; /* Emerald-50 */
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.8em;
+  border: 1px solid #a7f3d0;
+}
+.prose a:hover {
+  background: #d1fae5;
+}
